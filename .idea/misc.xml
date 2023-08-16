@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="enabledOnReformat" value="true" />
+    <option name="sdkUUID" value="4056cab2-5993-4416-9e53-7e1ac2122f8d" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="torch" project-jdk-type="Python SDK" />
+</project>
