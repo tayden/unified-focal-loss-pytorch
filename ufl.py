@@ -25,6 +25,8 @@ def dice_similarity_c(
         int type ground truth labels for each sample.
     smooth : Optional[float]
         A function smooth parameter that also provides numerical stability.
+    reduction: Optional[str]
+        The reduction method to apply to the output. Must be either 'sum' or 'none'.
 
     Returns
     -------
@@ -66,6 +68,8 @@ def tversky_index_c(
         The relative weight to go to false positives.
     smooth : Optional[float]
         A function smooth parameter that also provides numerical stability.
+    reduction: Optional[str]
+        The reduction method to apply to the output. Must be either 'sum' or 'none'.
 
     Returns
     -------
@@ -87,6 +91,7 @@ def tversky_index_c(
 class _Loss(nn.Module, ABC):
     ignore_index = None
 
+    # noinspection PyTypeChecker
     @abstractmethod
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
@@ -100,7 +105,7 @@ class _Loss(nn.Module, ABC):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         """Calculate loss.
@@ -114,10 +119,10 @@ class _Loss(nn.Module, ABC):
             
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
-        raise NotImplementedError
+        raise NotImplementedError("Must be implemented by subclass.")
 
     def _ignore_flatten(
         self, y_pred: torch.Tensor, y_true: torch.Tensor
@@ -189,7 +194,7 @@ class DiceCoefficient(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -232,7 +237,7 @@ class DiceLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -275,7 +280,7 @@ class TverskyLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -329,7 +334,7 @@ class FocalTverskyLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -377,7 +382,7 @@ class FocalLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -427,7 +432,7 @@ class ComboLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
 
@@ -489,7 +494,7 @@ class SymmetricFocalTverskyLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
 
@@ -564,7 +569,7 @@ class AsymmetricFocalTverskyLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -602,7 +607,7 @@ class SymmetricFocalLoss(_Loss):
         controls weight given to false positive and false negatives, by default 0.7
     gamma : float, optional
         Focal Tversky loss' focal parameter controls degree of down-weighting of easy
-        examples, by default 2.0
+        examples, by default 0.75
     """
 
     def __init__(
@@ -632,7 +637,7 @@ class SymmetricFocalLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -667,7 +672,7 @@ class AsymmetricFocalLoss(_Loss):
         controls weight given to false positive and false negatives, by default 0.7
     gamma : float, optional
         Focal Tversky loss' focal parameter controls degree of down-weighting of
-        easy examples, by default 2.0
+        easy examples, by default 0.75
     """
 
     def __init__(
@@ -695,7 +700,7 @@ class AsymmetricFocalLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
@@ -710,8 +715,8 @@ class AsymmetricFocalLoss(_Loss):
         back_ce = (
             (1 - self.delta) * torch.pow(1 - back_pred + EPSILON, self.gamma) * back_ce
         )
-        
-        fore_ce = self.delta * cross_entropy[~mask].reshape(n, c-1)
+
+        fore_ce = self.delta * cross_entropy[~mask].reshape(n, c - 1)
 
         return torch.mean(torch.sum(torch.concat([back_ce, fore_ce], dim=1), dim=1))
 
@@ -771,7 +776,7 @@ class SymUnifiedFocalLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
 
@@ -838,7 +843,7 @@ class AsymUnifiedFocalLoss(_Loss):
 
         Returns
         -------
-        loss : Tensor of shape (1,)
+        loss : Tensor of shape 1
             Loss value.
         """
 
