@@ -467,12 +467,14 @@ class SymmetricFocalTverskyLoss(_Loss):
         delta: float = 0.7,
         gamma: float = 0.75,
         smooth: float = EPSILON,
+        common_class_index: int = 0,
         ignore_index: int = None,
     ):
         super().__init__()
         self.delta = delta
         self.gamma = gamma
         self.smooth = smooth
+        self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -503,12 +505,17 @@ class SymmetricFocalTverskyLoss(_Loss):
             reduction="none",
         )
 
-        # This assumes that the background class is the first class
-        back_tversky = (1 - tversky_class[:, 0].unsqueeze(1)) * torch.pow(
-            (1 - tversky_class[:, 0].unsqueeze(1) + EPSILON), -self.gamma
+        n, c = y_true.shape
+        mask = torch.zeros_like(y_true, dtype=torch.bool)
+        mask[:, self.common_class_index] = True
+
+        back_tversky = tversky_class[mask].reshape(n, 1)
+        back_tversky = (1 - back_tversky) * torch.pow(
+            (1 - back_tversky + EPSILON), -self.gamma
         )
-        fore_tversky = (1 - tversky_class[:, 1:]) * torch.pow(
-            (1 - tversky_class[:, 1:] + EPSILON), -self.gamma
+        fore_tversky = tversky_class[~mask].reshape(n, c - 1)
+        fore_tversky = (1 - fore_tversky) * torch.pow(
+            (1 - fore_tversky + EPSILON), -self.gamma
         )
 
         # Average class scores
@@ -535,12 +542,14 @@ class AsymmetricFocalTverskyLoss(_Loss):
         delta: float = 0.7,
         gamma: float = 0.75,
         smooth: float = EPSILON,
+        common_class_index: int = 0,
         ignore_index: int = None,
     ):
         super().__init__()
         self.delta = delta
         self.gamma = gamma
         self.smooth = smooth
+        self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -568,14 +577,18 @@ class AsymmetricFocalTverskyLoss(_Loss):
             reduction="none",
         )
 
-        # This assumes that the background class is the first class
-        back_dice = 1 - tversky_class[:, 0].unsqueeze(1)
-        fore_dice = (1 - tversky_class[:, 1:]) * torch.pow(
-            (1 - tversky_class[:, 1:] + EPSILON), -self.gamma
+        n, c = y_true.shape
+        mask = torch.zeros_like(y_true, dtype=torch.bool)
+        mask[:, self.common_class_index] = True
+
+        back_tversky = 1 - tversky_class[mask].reshape(n, 1)
+        fore_tversky = tversky_class[~mask].reshape(n, c - 1)
+        fore_tversky = (1 - fore_tversky) * torch.pow(
+            (1 - fore_tversky + EPSILON), -self.gamma
         )
 
         # Average class scores
-        return torch.mean(torch.concat([back_dice, fore_dice], dim=1))
+        return torch.mean(torch.concat([back_tversky, fore_tversky], dim=1))
 
 
 ################################
@@ -597,12 +610,14 @@ class SymmetricFocalLoss(_Loss):
         delta: float = 0.7,
         gamma: float = 0.75,
         smooth: float = EPSILON,
+        common_class_index: int = 0,
         ignore_index: int = None,
     ):
         super().__init__()
         self.delta = delta
         self.gamma = gamma
         self.smooth = smooth
+        self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -623,13 +638,19 @@ class SymmetricFocalLoss(_Loss):
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
-        back_ce = torch.pow(
-            1 - y_pred[:, 0].unsqueeze(1) + EPSILON, self.gamma
-        ) * cross_entropy[:, 0].unsqueeze(1)
-        back_ce = (1 - self.delta) * back_ce
+        n, c = y_true.shape
+        mask = torch.zeros_like(y_true, dtype=torch.bool)
+        mask[:, self.common_class_index] = True
 
-        fore_ce = torch.pow(1 - y_pred[:, 1:], self.gamma) * cross_entropy[:, 1:]
-        fore_ce = self.delta * fore_ce
+        back_pred = y_pred[mask].reshape(n, 1)
+        back_ce = cross_entropy[mask].reshape(n, 1)
+        back_ce = (
+            (1 - self.delta) * torch.pow(1 - back_pred + EPSILON, self.gamma) * back_ce
+        )
+
+        fore_pred = y_pred[~mask].reshape(n, c - 1)
+        fore_ce = cross_entropy[~mask].reshape(n, c - 1)
+        fore_ce = self.delta * torch.pow(1 - fore_pred, self.gamma) * fore_ce
 
         return torch.mean(torch.sum(torch.concat([back_ce, fore_ce], dim=1), dim=1))
 
@@ -650,11 +671,16 @@ class AsymmetricFocalLoss(_Loss):
     """
 
     def __init__(
-        self, delta: float = 0.7, gamma: float = 0.75, ignore_index: int = None
+        self,
+        delta: float = 0.7,
+        gamma: float = 0.75,
+        common_class_index: int = 0,
+        ignore_index: int = None,
     ):
         super().__init__()
         self.delta = delta
         self.gamma = gamma
+        self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -675,12 +701,17 @@ class AsymmetricFocalLoss(_Loss):
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
-        back_ce = torch.pow(
-            1 - y_pred[:, 0].unsqueeze(1) + EPSILON, self.gamma
-        ) * cross_entropy[:, 0].unsqueeze(1)
-        back_ce = (1 - self.delta) * back_ce
+        n, c = y_true.shape
+        mask = torch.zeros_like(y_true, dtype=torch.bool)
+        mask[:, self.common_class_index] = True
 
-        fore_ce = self.delta * cross_entropy[:, 1:]
+        back_pred = y_pred[mask].reshape(n, 1)
+        back_ce = cross_entropy[mask].reshape(n, 1)
+        back_ce = (
+            (1 - self.delta) * torch.pow(1 - back_pred + EPSILON, self.gamma) * back_ce
+        )
+        
+        fore_ce = self.delta * cross_entropy[~mask].reshape(n, c-1)
 
         return torch.mean(torch.sum(torch.concat([back_ce, fore_ce], dim=1), dim=1))
 
@@ -709,19 +740,23 @@ class SymUnifiedFocalLoss(_Loss):
         weight: float = 0.5,
         delta: float = 0.7,
         gamma: float = 0.75,
+        common_class_index: int = 0,
         ignore_index: int = None,
     ):
         super().__init__()
         self.weight = weight
-        self.delta = delta
-        self.gamma = gamma
-        self.ignore_index = ignore_index
 
         self.symmetric_ftl = SymmetricFocalTverskyLoss(
-            delta=self.delta, gamma=self.gamma, ignore_index=self.ignore_index
+            delta=delta,
+            gamma=gamma,
+            common_class_index=common_class_index,
+            ignore_index=ignore_index,
         )
         self.symmetric_fl = SymmetricFocalLoss(
-            delta=self.delta, gamma=self.gamma, ignore_index=self.ignore_index
+            delta=delta,
+            gamma=gamma,
+            common_class_index=common_class_index,
+            ignore_index=ignore_index,
         )
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -772,19 +807,23 @@ class AsymUnifiedFocalLoss(_Loss):
         weight: float = 0.5,
         delta: float = 0.7,
         gamma: float = 0.75,
+        common_class_index: int = 0,
         ignore_index: int = None,
     ):
         super().__init__()
         self.weight = weight
-        self.delta = delta
-        self.gamma = gamma
-        self.ignore_index = ignore_index
 
         self.asymmetric_ftl = AsymmetricFocalTverskyLoss(
-            delta=self.delta, gamma=self.gamma, ignore_index=self.ignore_index
+            delta=delta,
+            gamma=gamma,
+            common_class_index=common_class_index,
+            ignore_index=ignore_index,
         )
         self.asymmetric_fl = AsymmetricFocalLoss(
-            delta=self.delta, gamma=self.gamma, ignore_index=self.ignore_index
+            delta=delta,
+            gamma=gamma,
+            common_class_index=common_class_index,
+            ignore_index=ignore_index,
         )
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
