@@ -7,7 +7,81 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
 
-EPSILON = 1e-10
+EPSILON = 1e-8
+
+
+# noinspection DuplicatedCode
+def dice_similarity_c(
+    p: torch.Tensor, g: torch.Tensor, smooth: float = EPSILON, reduction="sum"
+) -> torch.Tensor:
+    """Compute the Dice similarity index for each class for predictions p and ground
+    truth labels g.
+
+    Parameters
+    ----------
+    p : np.ndarray shape=(batch_size, num_classes, height, width)
+        Softmax or sigmoid scaled predictions.
+    g : np.ndarray shape=(batch_size, height, width)
+        int type ground truth labels for each sample.
+    smooth : Optional[float]
+        A function smooth parameter that also provides numerical stability.
+
+    Returns
+    -------
+    List[float]
+        The calculated similarity index amount for each class.
+    """
+    tp = p * g
+    denominator = p + g
+
+    if reduction == "sum":
+        tp = torch.nansum(torch.mul(p, g), dim=0)
+        denominator = torch.nansum(p + g, dim=0)
+    elif reduction != "none":
+        raise ValueError("Reduction must be either 'sum' or 'none'.")
+
+    return ((2 * tp) + smooth) / (denominator + smooth)
+
+
+def tversky_index_c(
+    p: torch.Tensor,
+    g: torch.Tensor,
+    alpha: float = 0.5,
+    beta: float = 0.5,
+    smooth: float = EPSILON,
+    reduction="sum",
+) -> torch.Tensor:
+    """Compute the Tversky similarity index for each class for predictions p and
+    ground truth labels g.
+
+    Parameters
+    ----------
+    p : np.ndarray shape=(batch_size, num_classes, height, width)
+        Softmax or sigmoid scaled predictions.
+    g : np.ndarray shape=(batch_size, height, width)
+        int type ground truth labels for each sample.
+    alpha : Optional[float]
+        The relative weight to go to false negatives.
+    beta : Optional[float]
+        The relative weight to go to false positives.
+    smooth : Optional[float]
+        A function smooth parameter that also provides numerical stability.
+
+    Returns
+    -------
+    List[float]
+        The calculated similarity index amount for each class.
+    """
+    tp = torch.mul(p, g)
+    fn = torch.mul(1.0 - p, g)
+    fp = torch.mul(p, 1.0 - g)
+    if reduction == "sum":
+        tp = torch.nansum(tp, dim=0)
+        fn = torch.nansum(fn, dim=0)
+        fp = torch.nansum(fp, dim=0)
+    elif reduction != "none":
+        raise ValueError("Reduction must be either 'sum' or 'none'.")
+    return (tp + smooth) / (tp + alpha * fn + beta * fp + smooth)
 
 
 class _Loss(nn.Module, ABC):
@@ -62,71 +136,21 @@ class _Loss(nn.Module, ABC):
         -------
         y_pred : Tensor of shape (num_samples - num_ignored_samples, num_classes)
             Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (num_samples - num_ignored_samples, num_classes)
-            Ground truth labels.
+        y_true : Ground truth labels.
+            One-hot encoded tensor of shape
+            (num_samples - num_ignored_samples, num_classes)
+
         """
         y_true = rearrange(y_true, "n c ... -> (n ...) c")
         y_pred = rearrange(y_pred, "n c ... -> (n ...) c")
         n, c = y_true.shape
         if self.ignore_index is not None:
-            y_true = torch.argmax(y_true, dim=1).flatten()
+            y_true = torch.argmax(y_true, dim=1)
             mask = y_true != self.ignore_index
             y_true = F.one_hot(y_true[mask], num_classes=c - 1)
             y_pred = y_pred[mask]
 
         return y_pred, y_true
-
-    @staticmethod
-    def _tfpn(
-        y_pred, y_true, reduction="sum"
-    ) -> (
-        int | torch.Tensor,
-        int | torch.Tensor,
-        int | torch.Tensor,
-        int | torch.Tensor,
-    ):
-        """Calculate true positives, true negatives, false positives and false negatives.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
-            Ground truth labels.
-        reduction : str, optional
-            Reduction method, by default "sum". If "none" is specified, the function
-            returns the raw values.
-
-        Returns
-        -------
-        tp : int | torch.Tensor
-            Number of true positives.
-        tn : int | torch.Tensor
-            Number of true negatives.
-        fp : int | torch.Tensor
-            Number of false positives.
-        fn : int | torch.Tensor
-            Number of false negatives.
-
-        """
-        if not len(y_true.shape) == 2 or not len(y_pred.shape) == 2:
-            raise ValueError("Metric: Shape of tensor is not 2D.")
-
-        # Probs to one-hot
-        n, c = y_true.shape
-        y_pred = F.one_hot(y_pred.argmax(dim=1), num_classes=c)
-
-        tp = y_true * y_pred
-        tn = (1 - y_true) * (1 - y_pred)
-        fn = y_true * (1 - y_pred)
-        fp = (1 - y_true) * y_pred
-
-        if reduction == "sum":
-            return tp.sum(), tn.sum(), fp.sum(), fn.sum()
-        elif reduction == "none":
-            return tp, tn, fp, fn
-
-        raise ValueError(f"Reduction {reduction} not supported.")
 
 
 ################################
@@ -146,7 +170,7 @@ class DiceCoefficient(_Loss):
     """
 
     def __init__(
-        self, delta: float = 0.5, smooth: float = 0.000001, ignore_index: int = None
+        self, delta: float = 0.7, smooth: float = 0.000001, ignore_index: int = None
     ):
         super().__init__()
         self.delta = delta
@@ -168,14 +192,8 @@ class DiceCoefficient(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tp, tn, fp, fn = self._tfpn(y_pred, y_true)
-
-        dice_class = (tp + self.smooth) / (
-            (tp + self.delta * fn + (1 - self.delta) * fp) + self.smooth
-        )
-        # Average class scores
+        dice_class = dice_similarity_c(y_pred, y_true, smooth=self.smooth)
         return torch.mean(dice_class)
 
 
@@ -195,7 +213,7 @@ class DiceLoss(_Loss):
     """
 
     def __init__(
-        self, delta: float = 0.5, smooth: float = 0.000001, ignore_index: int = None
+        self, delta: float = 0.7, smooth: float = 0.000001, ignore_index: int = None
     ):
         super().__init__()
         self.delta = delta
@@ -217,15 +235,8 @@ class DiceLoss(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tp, tn, fp, fn = self._tfpn(y_pred, y_true)
-
-        # Calculate Dice score
-        dice_class = (tp + self.smooth) / (
-            (tp + self.delta * fn + (1 - self.delta) * fp) + self.smooth
-        )
-        # Average class scores
+        dice_class = dice_similarity_c(y_pred, y_true, smooth=self.smooth)
         return torch.mean(1 - dice_class)
 
 
@@ -267,14 +278,10 @@ class TverskyLoss(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tp, tn, fp, fn = self._tfpn(y_pred, y_true)
-
-        tversky_class = (tp + self.smooth) / (
-            (tp + self.delta * fn + (1 - self.delta) * fp) + self.smooth
+        tversky_class = tversky_index_c(
+            y_pred, y_true, alpha=self.delta, beta=1 - self.delta, smooth=self.smooth
         )
-        # Average class scores
         return torch.mean(1 - tversky_class)
 
 
@@ -325,12 +332,9 @@ class FocalTverskyLoss(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tp, tn, fp, fn = self._tfpn(y_pred, y_true)
-
-        tversky_class = (tp + self.smooth) / (
-            (tp + self.delta * fn + (1 - self.delta) * fp) + self.smooth
+        tversky_class = tversky_index_c(
+            y_pred, y_true, alpha=self.delta, beta=1 - self.delta, smooth=self.smooth
         )
         # Average class scores
         return torch.mean(torch.pow((1 - tversky_class), self.gamma))
@@ -345,20 +349,20 @@ class FocalLoss(_Loss):
 
     Parameters
     ----------
-    alpha : float, optional
-        controls relative weight of false positives and false negatives. alpha > 0.5
-        penalises false negatives more than false positives, by default None
-    gamma_f : float, optional
+    delta : float, optional
+        controls relative weight of false positives and false negatives. delta > 0.5
+        penalises false negatives more than false positives, by default 0.7
+    gamma : float, optional
         focal parameter controls degree of down-weighting of easy examples,
-        by default 2.
+        by default 0.75.
     """
 
     def __init__(
-        self, alpha: float = None, gamma_f: float = 2.0, ignore_index: int = None
+        self, delta: float = 0.7, gamma: float = 0.75, ignore_index: int = None
     ):
         super().__init__()
-        self.alpha = alpha
-        self.gamma_f = gamma_f
+        self.delta = delta
+        self.gamma = gamma
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -376,19 +380,15 @@ class FocalLoss(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
-        if self.alpha is not None:
-            alpha_weight = torch.Tensor(self.alpha, dtype=torch.float32)
+        if self.delta is not None:
             focal_loss = (
-                alpha_weight
-                * torch.pow(1 - y_pred + EPSILON, self.gamma_f)
-                * cross_entropy
+                self.delta * torch.pow(1 - y_pred + EPSILON, self.gamma) * cross_entropy
             )
         else:
-            focal_loss = torch.pow(1 - y_pred + EPSILON, self.gamma_f) * cross_entropy
+            focal_loss = torch.pow(1 - y_pred + EPSILON, self.gamma) * cross_entropy
 
         return torch.mean(torch.sum(focal_loss, dim=1))
 
@@ -450,6 +450,7 @@ class ComboLoss(_Loss):
 # Symmetric Focal Tversky loss  #
 #################################
 class SymmetricFocalTverskyLoss(_Loss):
+
     """This is the implementation for binary segmentation.
 
     Parameters
@@ -462,11 +463,16 @@ class SymmetricFocalTverskyLoss(_Loss):
     """
 
     def __init__(
-        self, delta: float = 0.7, gamma: float = 0.75, ignore_index: int = None
+        self,
+        delta: float = 0.7,
+        gamma: float = 0.75,
+        smooth: float = EPSILON,
+        ignore_index: int = None,
     ):
         super().__init__()
         self.delta = delta
         self.gamma = gamma
+        self.smooth = smooth
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -486,23 +492,27 @@ class SymmetricFocalTverskyLoss(_Loss):
         """
 
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tp, tn, fp, fn = self._tfpn(y_pred, y_true, reduction="none")
 
         # Calculate Dice score
-        dice_class = (tp + EPSILON) / (
-            (tp + self.delta * fn + (1 - self.delta) * fp) + EPSILON
+        tversky_class = tversky_index_c(
+            y_pred,
+            y_true,
+            alpha=self.delta,
+            beta=1 - self.delta,
+            smooth=self.smooth,
+            reduction="none",
         )
 
         # This assumes that the background class is the first class
-        back_dice = (1 - dice_class[:, 0].unsqueeze(1)) * torch.pow(
-            (1 - dice_class[:, 0].unsqueeze(1) + EPSILON), -self.gamma
+        back_tversky = (1 - tversky_class[:, 0].unsqueeze(1)) * torch.pow(
+            (1 - tversky_class[:, 0].unsqueeze(1) + EPSILON), -self.gamma
         )
-        fore_dice = (1 - dice_class[:, 1:]) * torch.pow(
-            (1 - dice_class[:, 1:] + EPSILON), -self.gamma
+        fore_tversky = (1 - tversky_class[:, 1:]) * torch.pow(
+            (1 - tversky_class[:, 1:] + EPSILON), -self.gamma
         )
 
         # Average class scores
-        return torch.mean(torch.concat([back_dice, fore_dice], dim=1))
+        return torch.mean(torch.concat([back_tversky, fore_tversky], dim=1))
 
 
 #################################
@@ -521,11 +531,16 @@ class AsymmetricFocalTverskyLoss(_Loss):
     """
 
     def __init__(
-        self, delta: float = 0.7, gamma: float = 0.75, ignore_index: int = None
+        self,
+        delta: float = 0.7,
+        gamma: float = 0.75,
+        smooth: float = EPSILON,
+        ignore_index: int = None,
     ):
         super().__init__()
         self.delta = delta
         self.gamma = gamma
+        self.smooth = smooth
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -543,19 +558,20 @@ class AsymmetricFocalTverskyLoss(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tp, tn, fp, fn = self._tfpn(y_pred, y_true, reduction="none")
-
-        # Calculate Dice score
-        dice_class = (tp + EPSILON) / (
-            (tp + self.delta * fn + (1 - self.delta) * fp) + EPSILON
+        tversky_class = tversky_index_c(
+            y_pred,
+            y_true,
+            alpha=self.delta,
+            beta=self.delta,
+            smooth=self.smooth,
+            reduction="none",
         )
 
         # This assumes that the background class is the first class
-        back_dice = 1 - dice_class[:, 0].unsqueeze(1)
-        fore_dice = (1 - dice_class[:, 1:]) * torch.pow(
-            (1 - dice_class[:, 1:] + EPSILON), -self.gamma
+        back_dice = 1 - tversky_class[:, 0].unsqueeze(1)
+        fore_dice = (1 - tversky_class[:, 1:]) * torch.pow(
+            (1 - tversky_class[:, 1:] + EPSILON), -self.gamma
         )
 
         # Average class scores
@@ -577,11 +593,16 @@ class SymmetricFocalLoss(_Loss):
     """
 
     def __init__(
-        self, delta: float = 0.7, gamma: float = 2.0, ignore_index: int = None
+        self,
+        delta: float = 0.7,
+        gamma: float = 0.75,
+        smooth: float = EPSILON,
+        ignore_index: int = None,
     ):
         super().__init__()
         self.delta = delta
         self.gamma = gamma
+        self.smooth = smooth
         self.ignore_index = ignore_index
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
@@ -599,13 +620,12 @@ class SymmetricFocalLoss(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
-        back_ce = torch.pow(1 - y_pred[:, 0].unsqueeze(1), self.gamma) * cross_entropy[
-            :, 0
-        ].unsqueeze(1)
+        back_ce = torch.pow(
+            1 - y_pred[:, 0].unsqueeze(1) + EPSILON, self.gamma
+        ) * cross_entropy[:, 0].unsqueeze(1)
         back_ce = (1 - self.delta) * back_ce
 
         fore_ce = torch.pow(1 - y_pred[:, 1:], self.gamma) * cross_entropy[:, 1:]
@@ -630,7 +650,7 @@ class AsymmetricFocalLoss(_Loss):
     """
 
     def __init__(
-        self, delta: float = 0.7, gamma: float = 2.0, ignore_index: int = None
+        self, delta: float = 0.7, gamma: float = 0.75, ignore_index: int = None
     ):
         super().__init__()
         self.delta = delta
@@ -652,13 +672,12 @@ class AsymmetricFocalLoss(_Loss):
         loss : Tensor of shape (1,)
             Loss value.
         """
-
         y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
-        back_ce = torch.pow(1 - y_pred[:, 0].unsqueeze(1), self.gamma) * cross_entropy[
-            :, 0
-        ].unsqueeze(1)
+        back_ce = torch.pow(
+            1 - y_pred[:, 0].unsqueeze(1) + EPSILON, self.gamma
+        ) * cross_entropy[:, 0].unsqueeze(1)
         back_ce = (1 - self.delta) * back_ce
 
         fore_ce = self.delta * cross_entropy[:, 1:]
@@ -688,8 +707,8 @@ class SymUnifiedFocalLoss(_Loss):
     def __init__(
         self,
         weight: float = 0.5,
-        delta: float = 0.6,
-        gamma: float = 0.5,
+        delta: float = 0.7,
+        gamma: float = 0.75,
         ignore_index: int = None,
     ):
         super().__init__()
@@ -751,8 +770,8 @@ class AsymUnifiedFocalLoss(_Loss):
     def __init__(
         self,
         weight: float = 0.5,
-        delta: float = 0.6,
-        gamma: float = 0.5,
+        delta: float = 0.7,
+        gamma: float = 0.75,
         ignore_index: int = None,
     ):
         super().__init__()
