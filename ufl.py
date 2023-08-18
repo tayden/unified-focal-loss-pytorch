@@ -93,8 +93,9 @@ class _Loss(nn.Module, ABC):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -107,8 +108,9 @@ class _Loss(nn.Module, ABC):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
             
         Returns
@@ -165,8 +167,9 @@ class DiceCoefficient(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -207,8 +210,9 @@ class DiceLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -249,8 +253,9 @@ class TverskyLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -302,8 +307,9 @@ class FocalTverskyLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -349,8 +355,9 @@ class FocalLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -405,8 +412,9 @@ class ComboLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -465,8 +473,9 @@ class SymmetricFocalTverskyLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -538,8 +547,9 @@ class AsymmetricFocalTverskyLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -605,8 +615,9 @@ class SymmetricFocalLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -667,8 +678,9 @@ class AsymmetricFocalLoss(_Loss):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -742,8 +754,9 @@ class SymUnifiedFocalLoss(nn.Module):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
@@ -809,8 +822,9 @@ class AsymUnifiedFocalLoss(nn.Module):
         Parameters
         ----------
         y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
+            Predicted probabilities for each output class (i.e. softmax activated
+            predictions).
+        y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
 
         Returns
