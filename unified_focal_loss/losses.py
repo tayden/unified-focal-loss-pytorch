@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
 
-EPSILON = 1e-8
+_EPSILON = 1e-8
 
 
 def _tversky_index_c(
@@ -15,31 +15,29 @@ def _tversky_index_c(
     g: torch.Tensor,
     alpha: float = 0.5,
     beta: float = 0.5,
-    smooth: float = EPSILON,
+    smooth: float = _EPSILON,
     reduction="sum",
 ) -> torch.Tensor:
     """Compute the Tversky similarity index for each class for predictions p and
     ground truth labels g.
 
-    Parameters
-    ----------
-    p : np.ndarray shape=(batch_size, num_classes, height, width)
-        Softmax or sigmoid scaled predictions.
-    g : np.ndarray shape=(batch_size, height, width)
-        int type ground truth labels for each sample.
-    alpha : Optional[float]
-        The relative weight to go to false negatives.
-    beta : Optional[float]
-        The relative weight to go to false positives.
-    smooth : Optional[float]
-        A function smooth parameter that also provides numerical stability.
-    reduction: Optional[str]
-        The reduction method to apply to the output. Must be either 'sum' or 'none'.
+    Args:
+        p : np.ndarray shape=(batch_size, num_classes, height, width)
+            Softmax or sigmoid scaled predictions.
+        g : np.ndarray shape=(batch_size, height, width)
+            int type ground truth labels for each sample.
+        alpha : Optional[float]
+            The relative weight to go to false negatives.
+        beta : Optional[float]
+            The relative weight to go to false positives.
+        smooth : Optional[float]
+            A function smooth parameter that also provides numerical stability.
+        reduction: Optional[str]
+            The reduction method to apply to the output. Must be either 'sum' or 'none'.
 
-    Returns
-    -------
-    List[float]
-        The calculated similarity index amount for each class.
+    Returns:
+        List[float]
+            The calculated similarity index amount for each class.
     """
     tp = torch.mul(p, g)
     fn = torch.mul(1.0 - p, g)
@@ -54,26 +52,24 @@ def _tversky_index_c(
 
 
 def _dice_similarity_c(
-    p: torch.Tensor, g: torch.Tensor, smooth: float = EPSILON, reduction="sum"
+    p: torch.Tensor, g: torch.Tensor, smooth: float = _EPSILON, reduction="sum"
 ) -> torch.Tensor:
     """Compute the Dice similarity index for each class for predictions p and ground
     truth labels g.
 
-    Parameters
-    ----------
-    p : np.ndarray shape=(batch_size, num_classes, height, width)
-        Softmax or sigmoid scaled predictions.
-    g : np.ndarray shape=(batch_size, height, width)
-        int type ground truth labels for each sample.
-    smooth : Optional[float]
-        A function smooth parameter that also provides numerical stability.
-    reduction: Optional[str]
-        The reduction method to apply to the output. Must be either 'sum' or 'none'.
+    Args:
+        p : np.ndarray shape=(batch_size, num_classes, height, width)
+            Softmax or sigmoid scaled predictions.
+        g : np.ndarray shape=(batch_size, height, width)
+            int type ground truth labels for each sample.
+        smooth : Optional[float]
+            A function smooth parameter that also provides numerical stability.
+        reduction: Optional[str]
+            The reduction method to apply to the output. Must be either 'sum' or 'none'.
 
-    Returns
-    -------
-    List[float]
-        The calculated similarity index amount for each class.
+    Returns:
+        List[float]
+            The calculated similarity index amount for each class.
     """
     return _tversky_index_c(
         p, g, alpha=0.5, beta=0.5, smooth=smooth, reduction=reduction
@@ -84,39 +80,31 @@ class _Loss(nn.Module, ABC):
     ignore_index = None
 
     @abstractmethod
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("Must be implemented by subclass.")
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
+        Args:
+            y_pred : Tensor of shape (batch_size, num_classes, ...).
+                Predicted probabilities for each output class.
+            y_true : Tensor of shape (batch_size, ...)
+                Ground truth labels.
 
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
+        Returns:
+            loss : Loss value.
         """
         """Calculate loss.
 
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
+        Args:
+            y_pred : Tensor of shape (batch_size, num_classes, ...).
+                Predicted probabilities for each output class.
+            y_true : Tensor of shape (batch_size, ...)
+                Ground truth labels.
 
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
+        Returns:
+            loss : Loss value.
         """
 
         # Flatten tensors
@@ -134,7 +122,7 @@ class _Loss(nn.Module, ABC):
         y_true = F.one_hot(y_true, num_classes=c)
 
         # Calculate loss
-        return self.calc_loss(y_pred, y_true)
+        return self._calc_loss(y_pred, y_true)
 
 
 ################################
@@ -145,38 +133,24 @@ class DiceCoefficient(_Loss):
         Dice coefficient, is a statistical tool which measures the similarity between
         two sets of data.
 
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.5
-    smooth : float, optional
-        smoothing constant to prevent division by zero errors, by default 0.000001
+    Args:
+        delta : float, optional
+            controls weight given to false positive and false negatives, by default 0.7.
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
-        self, delta: float = 0.7, smooth: float = 0.000001, ignore_index: int = None
+        self, delta: float = 0.7, smooth: float = _EPSILON, ignore_index: int = None
     ):
         super().__init__()
         self.delta = delta
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         dice_class = _dice_similarity_c(y_pred, y_true, smooth=self.smooth)
         return torch.mean(dice_class)
 
@@ -188,38 +162,24 @@ class DiceLoss(_Loss):
     """Dice loss originates from Sørensen–Dice coefficient, which is a statistic
     developed in the 1940s to gauge the similarity between two samples.
 
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.5
-    smooth : float, optional
-        smoothing constant to prevent division by zero errors, by default 0.000001
+    Args:
+        delta : float, optional
+            controls weight given to false positive and false negatives, by default 0.7.
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
-        self, delta: float = 0.7, smooth: float = 0.000001, ignore_index: int = None
+        self, delta: float = 0.7, smooth: float = _EPSILON, ignore_index: int = None
     ):
         super().__init__()
         self.delta = delta
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         dice_class = _dice_similarity_c(y_pred, y_true, smooth=self.smooth)
         return torch.mean(1 - dice_class)
 
@@ -231,38 +191,24 @@ class TverskyLoss(_Loss):
     """Tversky loss function for image segmentation using 3D fully convolutional deep
     networks. Link: https://arxiv.org/abs/1706.05721
 
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    smooth : float, optional
-        smoothing constant to prevent division by zero errors, by default 0.000001
+    Args:
+        delta : float, optional
+            controls weight given to false positive and false negatives, by default 0.7.
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
-        self, delta: float = 0.7, smooth: float = 0.000001, ignore_index: int = None
+        self, delta: float = 0.7, smooth: float = _EPSILON, ignore_index: int = None
     ):
         super().__init__()
         self.delta = delta
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         tversky_class = _tversky_index_c(
             y_pred, y_true, alpha=self.delta, beta=1 - self.delta, smooth=self.smooth
         )
@@ -277,22 +223,23 @@ class FocalTverskyLoss(_Loss):
         segmentation
     Link: https://arxiv.org/abs/1810.07842
 
-    Parameters
-    ----------
-    gamma : float, optional
-        focal parameter controls degree of down-weighting of easy examples,
-        by default 0.75
-    delta : float, optional
-        controls weight given to each class, by default 0.6
-    smooth : float, optional
-        smoothing constant to prevent division by zero errors, by default 0.000001
+    Args:
+        delta : float, optional
+            controls weight given to each class, by default 0.7
+        gamma : float, optional
+            focal parameter controls degree of down-weighting of easy examples,
+            by default 0.75
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
         self,
         delta: float = 0.7,
         gamma: float = 0.75,
-        smooth: float = 0.000001,
+        smooth: float = _EPSILON,
         ignore_index: int = None,
     ):
         super().__init__()
@@ -301,22 +248,7 @@ class FocalTverskyLoss(_Loss):
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         tversky_class = _tversky_index_c(
             y_pred, y_true, alpha=self.delta, beta=1 - self.delta, smooth=self.smooth
         )
@@ -331,14 +263,15 @@ class FocalLoss(_Loss):
     """Focal loss is used to address the issue of the class imbalance problem.
         A modulation term applied to the Cross-Entropy loss function.
 
-    Parameters
-    ----------
-    delta : float, optional
-        controls relative weight of false positives and false negatives. delta > 0.5
-        penalises false negatives more than false positives, by default 0.7
-    gamma : float, optional
-        focal parameter controls degree of down-weighting of easy examples,
-        by default 0.75.
+    Args:
+        delta : float, optional
+            controls relative weight of false positives and false negatives. delta > 0.5
+            penalises false negatives more than false positives, by default 0.7.
+        gamma : float, optional
+            focal parameter controls degree of down-weighting of easy examples,
+            by default 0.75.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
@@ -349,30 +282,17 @@ class FocalLoss(_Loss):
         self.gamma = gamma
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
-        cross_entropy = -y_true * torch.log(y_pred + EPSILON)
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        cross_entropy = -y_true * torch.log(y_pred + _EPSILON)
 
         if self.delta is not None:
             focal_loss = (
-                self.delta * torch.pow(1 - y_pred + EPSILON, self.gamma) * cross_entropy
+                self.delta
+                * torch.pow(1 - y_pred + _EPSILON, self.gamma)
+                * cross_entropy
             )
         else:
-            focal_loss = torch.pow(1 - y_pred + EPSILON, self.gamma) * cross_entropy
+            focal_loss = torch.pow(1 - y_pred + _EPSILON, self.gamma) * cross_entropy
 
         return torch.mean(torch.sum(focal_loss, dim=1))
 
@@ -384,19 +304,23 @@ class ComboLoss(_Loss):
     """Combo Loss: Handling Input and Output Imbalance in Multi-Organ Segmentation
     Link: https://arxiv.org/abs/1805.02798
 
-    Parameters
-    ----------
-    alpha : float, optional
-        controls weighting of dice and cross-entropy loss., by default 0.5
-    beta : float, optional
-        beta > 0.5 penalises false negatives more than false positives., by default 0.5
+    Args:
+        alpha : float, optional
+            controls weighting of dice and cross-entropy loss, by default 0.5.
+        beta : float, optional
+            beta > 0.5 penalises false negatives more than false positives, \
+            by default 0.5.
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
         self,
         alpha: float = 0.5,
         beta: float = 0.5,
-        smooth: float = EPSILON,
+        smooth: float = _EPSILON,
         ignore_index: int = None,
     ):
         super().__init__()
@@ -406,24 +330,9 @@ class ComboLoss(_Loss):
         self.ignore_index = ignore_index
         self.dice = DiceCoefficient(ignore_index=self.ignore_index)
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         dice = torch.mean(_dice_similarity_c(y_pred, y_true, smooth=self.smooth))
-        cross_entropy = -y_true * torch.log(y_pred + EPSILON)
+        cross_entropy = -y_true * torch.log(y_pred + _EPSILON)
 
         if self.beta is not None:
             cross_entropy = self.beta * cross_entropy + (1 - self.beta) * cross_entropy
@@ -443,20 +352,25 @@ class SymmetricFocalTverskyLoss(_Loss):
 
     """This is the implementation for binary segmentation.
 
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    gamma : float, optional
-        focal parameter controls degree of down-weighting of easy examples, by default
-        0.75
+    Args:
+        delta : float, optional
+            controls weight given to false positive and false negatives, by default 0.7.
+        gamma : float, optional
+            focal parameter controls degree of down-weighting of easy examples,
+            by default 0.75.
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        common_class_index : int, optional
+            index of the common class, by default 0.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
         self,
         delta: float = 0.7,
         gamma: float = 0.75,
-        smooth: float = EPSILON,
+        smooth: float = _EPSILON,
         common_class_index: int = 0,
         ignore_index: int = None,
     ):
@@ -467,23 +381,7 @@ class SymmetricFocalTverskyLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
-
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         # Calculate Dice score
         tversky_class = _tversky_index_c(
             y_pred,
@@ -500,11 +398,11 @@ class SymmetricFocalTverskyLoss(_Loss):
 
         back_tversky = tversky_class[mask].reshape(n, 1)
         back_tversky = (1 - back_tversky) * torch.pow(
-            (1 - back_tversky + EPSILON), -self.gamma
+            (1 - back_tversky + _EPSILON), -self.gamma
         )
         fore_tversky = tversky_class[~mask].reshape(n, c - 1)
         fore_tversky = (1 - fore_tversky) * torch.pow(
-            (1 - fore_tversky + EPSILON), -self.gamma
+            (1 - fore_tversky + _EPSILON), -self.gamma
         )
 
         # Average class scores
@@ -517,20 +415,25 @@ class SymmetricFocalTverskyLoss(_Loss):
 class AsymmetricFocalTverskyLoss(_Loss):
     """This is the implementation for binary segmentation.
 
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    gamma : float, optional
-        focal parameter controls degree of down-weighting of easy examples,
-        by default 0.75
+    Args:
+        delta : float, optional
+            controls weight given to false positive and false negatives, by default 0.7
+        gamma : float, optional
+            focal parameter controls degree of down-weighting of easy examples,
+            by default 0.75.
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        common_class_index : int, optional
+            index of the common class, by default 0.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
         self,
         delta: float = 0.7,
         gamma: float = 0.75,
-        smooth: float = EPSILON,
+        smooth: float = _EPSILON,
         common_class_index: int = 0,
         ignore_index: int = None,
     ):
@@ -541,22 +444,7 @@ class AsymmetricFocalTverskyLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         tversky_class = _tversky_index_c(
             y_pred,
             y_true,
@@ -573,7 +461,7 @@ class AsymmetricFocalTverskyLoss(_Loss):
         back_tversky = 1 - tversky_class[mask].reshape(n, 1)
         fore_tversky = tversky_class[~mask].reshape(n, c - 1)
         fore_tversky = (1 - fore_tversky) * torch.pow(
-            (1 - fore_tversky + EPSILON), -self.gamma
+            (1 - fore_tversky + _EPSILON), -self.gamma
         )
 
         # Average class scores
@@ -585,20 +473,25 @@ class AsymmetricFocalTverskyLoss(_Loss):
 ################################
 class SymmetricFocalLoss(_Loss):
     """
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    gamma : float, optional
-        Focal Tversky loss' focal parameter controls degree of down-weighting of easy
-        examples, by default 0.75
+    Args:
+        delta : float, optional
+            controls weight given to false positive and false negatives, by default 0.7.
+        gamma : float, optional
+            Focal Tversky loss' focal parameter controls degree of down-weighting of
+            easy examples, by default 0.75.
+        smooth : float, optional
+            smoothing constant to prevent division by zero errors, by default 0.000001.
+        common_class_index : int, optional
+            index of the common class, by default 0.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
         self,
         delta: float = 0.7,
         gamma: float = 0.75,
-        smooth: float = EPSILON,
+        smooth: float = _EPSILON,
         common_class_index: int = 0,
         ignore_index: int = None,
     ):
@@ -609,23 +502,8 @@ class SymmetricFocalLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
-        cross_entropy = -y_true * torch.log(y_pred + EPSILON)
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        cross_entropy = -y_true * torch.log(y_pred + _EPSILON)
 
         n, c = y_pred.shape
         mask = torch.zeros_like(y_true, dtype=torch.bool)
@@ -634,7 +512,7 @@ class SymmetricFocalLoss(_Loss):
         back_pred = y_pred[mask].reshape(n, 1)
         back_ce = cross_entropy[mask].reshape(n, 1)
         back_ce = (
-            (1 - self.delta) * torch.pow(1 - back_pred + EPSILON, self.gamma) * back_ce
+            (1 - self.delta) * torch.pow(1 - back_pred + _EPSILON, self.gamma) * back_ce
         )
 
         fore_pred = y_pred[~mask].reshape(n, c - 1)
@@ -650,13 +528,16 @@ class SymmetricFocalLoss(_Loss):
 class AsymmetricFocalLoss(_Loss):
     """For Imbalanced datasets
 
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    gamma : float, optional
-        Focal Tversky loss' focal parameter controls degree of down-weighting of
-        easy examples, by default 0.75
+    Args:
+        delta : float, optional
+            controls weight given to false positive and false negatives, by default 0.7.
+        gamma : float, optional
+            Focal Tversky loss' focal parameter controls degree of down-weighting of
+            easy examples, by default 0.75.
+        common_class_index : int, optional
+            index of the common class, by default 0.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
@@ -672,23 +553,8 @@ class AsymmetricFocalLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Calculate loss.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
-
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
-        """
-        cross_entropy = -y_true * torch.log(y_pred + EPSILON)
+    def _calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        cross_entropy = -y_true * torch.log(y_pred + _EPSILON)
 
         n, c = y_pred.shape
         mask = torch.zeros_like(y_true, dtype=torch.bool)
@@ -697,7 +563,7 @@ class AsymmetricFocalLoss(_Loss):
         back_pred = y_pred[mask].reshape(n, 1)
         back_ce = cross_entropy[mask].reshape(n, 1)
         back_ce = (
-            (1 - self.delta) * torch.pow(1 - back_pred + EPSILON, self.gamma) * back_ce
+            (1 - self.delta) * torch.pow(1 - back_pred + _EPSILON, self.gamma) * back_ce
         )
 
         fore_ce = self.delta * cross_entropy[~mask].reshape(n, c - 1)
@@ -712,16 +578,19 @@ class SymmetricUnifiedFocalLoss(nn.Module):
     """The Unified Focal loss is a new compound loss function that unifies Dice-based
         and cross entropy-based loss functions into a single framework.
 
-    Parameters
-    ----------
-    weight : float, optional
-        represents lambda parameter and controls weight given to symmetric Focal
-        Tversky loss and symmetric Focal loss, by default 0.5
-    delta : float, optional
-        controls weight given to each class, by default 0.6
-    gamma : float, optional
-        focal parameter controls the degree of background suppression and foreground
-        enhancement, by default 0.5
+    Args:
+        weight : float, optional
+            represents lambda parameter and controls weight given to symmetric Focal
+            Tversky loss and symmetric Focal loss, by default 0.5.
+        delta : float, optional
+            controls weight given to each class, by default 0.7.
+        gamma : float, optional
+            focal parameter controls the degree of background suppression and foreground
+            enhancement, by default 0.75.
+        common_class_index : int, optional
+            index of the common class, by default 0.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
@@ -751,18 +620,13 @@ class SymmetricUnifiedFocalLoss(nn.Module):
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
+        Args:
+            y_pred : Tensor of shape (batch_size, num_classes, ...).
+                Predicted probabilities for each output class.
+            y_true : Ground truth labels Tensor of shape (batch_size, ...).
 
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
+        Returns:
+            loss : Loss value.
         """
 
         symmetric_ftl = self.symmetric_ftl(y_pred, y_true)
@@ -780,16 +644,19 @@ class AsymmetricUnifiedFocalLoss(nn.Module):
     """The Unified Focal loss is a new compound loss function that unifies Dice-based
         and cross entropy-based loss functions into a single framework.
 
-    Parameters
-    ----------
-    weight : float, optional
-        represents lambda parameter and controls weight given to asymmetric Focal
-        Tversky loss and asymmetric Focal loss, by default 0.5
-    delta : float, optional
-        controls weight given to each class, by default 0.6
-    gamma : float, optional
-        focal parameter controls the degree of background suppression and foreground
-        enhancement, by default 0.5
+    Args:
+        weight : float, optional
+            represents lambda parameter and controls weight given to asymmetric Focal
+            Tversky loss and asymmetric Focal loss, by default 0.5.
+        delta : float, optional
+            controls weight given to each class, by default 0.7
+        gamma : float, optional
+            focal parameter controls the degree of background suppression and foreground
+            enhancement, by default 0.75.
+        common_class_index : int, optional
+            index of the common class, by default 0.
+        ignore_index : int, optional
+            index of the ignore class, by default None.
     """
 
     def __init__(
@@ -819,18 +686,13 @@ class AsymmetricUnifiedFocalLoss(nn.Module):
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted probabilities for each output class (i.e. softmax activated
-            predictions).
-        y_true : Tensor of shape (batch_size, ...)
-            Ground truth labels.
+        Args:
+            y_pred : Tensor of shape (batch_size, num_classes, ...).
+                Predicted probabilities for each output class.
+            y_true : Ground truth labels Tensor of shape (batch_size, ...).
 
-        Returns
-        -------
-        loss : Tensor of shape 1
-            Loss value.
+        Returns:
+            loss : Loss value.
         """
 
         asymmetric_ftl = self.asymmetric_ftl(y_pred, y_true)

@@ -51,3 +51,9 @@ loss = loss_fn(probs, targets)
 print(loss)
 # >>> tensor(0.6737)
 ```
+
+## Detailed API Reference
+See [API docs](docs/api.md).
+
+## License
+See [LICENSE](LICENSE).
