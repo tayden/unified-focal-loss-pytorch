@@ -83,8 +83,10 @@ def _dice_similarity_c(
 class _Loss(nn.Module, ABC):
     ignore_index = None
 
-    # noinspection PyTypeChecker
     @abstractmethod
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("Must be implemented by subclass.")
+
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
@@ -114,40 +116,23 @@ class _Loss(nn.Module, ABC):
         loss : Tensor of shape 1
             Loss value.
         """
-        raise NotImplementedError("Must be implemented by subclass.")
 
-    def _ignore_flatten(
-        self, y_pred: torch.Tensor, y_true: torch.Tensor
-    ) -> (torch.Tensor, torch.Tensor):
-        """Flatten tensors and ignore pixels with ignore_index.
-
-        Parameters
-        ----------
-        y_pred : Tensor of shape (batch_size, num_classes, ...)
-            Predicted labels as model softmax outputs.
-        y_true : One-hot encoded tensor of shape (batch_size, num_classes, ...)
-            Ground truth labels.
-
-
-        Returns
-        -------
-        y_pred : Tensor of shape (num_samples - num_ignored_samples, num_classes)
-            Predicted labels as model softmax outputs.
-        y_true : Ground truth labels.
-            One-hot encoded tensor of shape
-            (num_samples - num_ignored_samples, num_classes)
-
-        """
-        y_true = rearrange(y_true, "n c ... -> (n ...) c")
+        # Flatten tensors
+        y_true = rearrange(y_true, "n ... -> (n ...)")
         y_pred = rearrange(y_pred, "n c ... -> (n ...) c")
-        n, c = y_true.shape
+        n, c = y_pred.shape
+
+        # Remove ignore class
         if self.ignore_index is not None:
-            y_true = torch.argmax(y_true, dim=1)
             mask = y_true != self.ignore_index
-            y_true = F.one_hot(y_true[mask], num_classes=c - 1)
+            y_true = y_true[mask]
             y_pred = y_pred[mask]
 
-        return y_pred, y_true
+        # One-hot encode y_true
+        y_true = F.one_hot(y_true, num_classes=c)
+
+        # Calculate loss
+        return self.calc_loss(y_pred, y_true)
 
 
 ################################
@@ -174,7 +159,7 @@ class DiceCoefficient(_Loss):
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -189,8 +174,7 @@ class DiceCoefficient(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        dice_class = dice_similarity_c(y_pred, y_true, smooth=self.smooth)
+        dice_class = _dice_similarity_c(y_pred, y_true, smooth=self.smooth)
         return torch.mean(dice_class)
 
 
@@ -217,7 +201,7 @@ class DiceLoss(_Loss):
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -232,8 +216,7 @@ class DiceLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        dice_class = dice_similarity_c(y_pred, y_true, smooth=self.smooth)
+        dice_class = _dice_similarity_c(y_pred, y_true, smooth=self.smooth)
         return torch.mean(1 - dice_class)
 
 
@@ -260,7 +243,7 @@ class TverskyLoss(_Loss):
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -275,8 +258,7 @@ class TverskyLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tversky_class = tversky_index_c(
+        tversky_class = _tversky_index_c(
             y_pred, y_true, alpha=self.delta, beta=1 - self.delta, smooth=self.smooth
         )
         return torch.mean(1 - tversky_class)
@@ -314,7 +296,7 @@ class FocalTverskyLoss(_Loss):
         self.smooth = smooth
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -329,8 +311,7 @@ class FocalTverskyLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tversky_class = tversky_index_c(
+        tversky_class = _tversky_index_c(
             y_pred, y_true, alpha=self.delta, beta=1 - self.delta, smooth=self.smooth
         )
         # Average class scores
@@ -362,7 +343,7 @@ class FocalLoss(_Loss):
         self.gamma = gamma
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -377,7 +358,6 @@ class FocalLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
         if self.delta is not None:
@@ -405,14 +385,21 @@ class ComboLoss(_Loss):
         beta > 0.5 penalises false negatives more than false positives., by default 0.5
     """
 
-    def __init__(self, alpha: float = 0.5, beta: float = 0.5, ignore_index: int = None):
+    def __init__(
+        self,
+        alpha: float = 0.5,
+        beta: float = 0.5,
+        smooth: float = EPSILON,
+        ignore_index: int = None,
+    ):
         super().__init__()
         self.alpha = alpha
         self.beta = beta
+        self.smooth = smooth
         self.ignore_index = ignore_index
         self.dice = DiceCoefficient(ignore_index=self.ignore_index)
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -427,9 +414,7 @@ class ComboLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-
-        dice = self.dice(y_pred, y_true)
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
+        dice = torch.mean(_dice_similarity_c(y_pred, y_true, smooth=self.smooth))
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
         if self.beta is not None:
@@ -474,7 +459,7 @@ class SymmetricFocalTverskyLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -490,10 +475,8 @@ class SymmetricFocalTverskyLoss(_Loss):
             Loss value.
         """
 
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-
         # Calculate Dice score
-        tversky_class = tversky_index_c(
+        tversky_class = _tversky_index_c(
             y_pred,
             y_true,
             alpha=self.delta,
@@ -502,7 +485,7 @@ class SymmetricFocalTverskyLoss(_Loss):
             reduction="none",
         )
 
-        n, c = y_true.shape
+        n, c = y_pred.shape
         mask = torch.zeros_like(y_true, dtype=torch.bool)
         mask[:, self.common_class_index] = True
 
@@ -549,7 +532,7 @@ class AsymmetricFocalTverskyLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -564,8 +547,7 @@ class AsymmetricFocalTverskyLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
-        tversky_class = tversky_index_c(
+        tversky_class = _tversky_index_c(
             y_pred,
             y_true,
             alpha=self.delta,
@@ -574,7 +556,7 @@ class AsymmetricFocalTverskyLoss(_Loss):
             reduction="none",
         )
 
-        n, c = y_true.shape
+        n, c = y_pred.shape
         mask = torch.zeros_like(y_true, dtype=torch.bool)
         mask[:, self.common_class_index] = True
 
@@ -617,7 +599,7 @@ class SymmetricFocalLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -632,10 +614,9 @@ class SymmetricFocalLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
-        n, c = y_true.shape
+        n, c = y_pred.shape
         mask = torch.zeros_like(y_true, dtype=torch.bool)
         mask[:, self.common_class_index] = True
 
@@ -680,7 +661,7 @@ class AsymmetricFocalLoss(_Loss):
         self.common_class_index = common_class_index
         self.ignore_index = ignore_index
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    def calc_loss(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Calculate loss.
 
         Parameters
@@ -695,10 +676,9 @@ class AsymmetricFocalLoss(_Loss):
         loss : Tensor of shape 1
             Loss value.
         """
-        y_pred, y_true = self._ignore_flatten(y_pred, y_true)
         cross_entropy = -y_true * torch.log(y_pred + EPSILON)
 
-        n, c = y_true.shape
+        n, c = y_pred.shape
         mask = torch.zeros_like(y_true, dtype=torch.bool)
         mask[:, self.common_class_index] = True
 
@@ -716,7 +696,7 @@ class AsymmetricFocalLoss(_Loss):
 ###########################################
 #      Symmetric Unified Focal loss       #
 ###########################################
-class SymUnifiedFocalLoss(_Loss):
+class SymUnifiedFocalLoss(nn.Module):
     """The Unified Focal loss is a new compound loss function that unifies Dice-based
         and cross entropy-based loss functions into a single framework.
 
@@ -783,7 +763,7 @@ class SymUnifiedFocalLoss(_Loss):
 ###########################################
 #      Asymmetric Unified Focal loss      #
 ###########################################
-class AsymUnifiedFocalLoss(_Loss):
+class AsymUnifiedFocalLoss(nn.Module):
     """The Unified Focal loss is a new compound loss function that unifies Dice-based
         and cross entropy-based loss functions into a single framework.
 
