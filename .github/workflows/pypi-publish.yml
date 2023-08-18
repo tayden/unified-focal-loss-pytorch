@@ -1,0 +1,46 @@
+# This workflow will upload a Python Package using Twine when a release is created
+# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+
+name: Upload Python Package
+
+on:
+  push:
+    branches-ignore:
+      - '**'
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+jobs:
+  deploy:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Get tag
+      id: tag
+      run: |
+        echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Setup Poetry
+      uses: abatilo/actions-poetry@v2.3.0
+      with:
+        poetry-version: 1.5.1
+
+    - name: Install dependencies
+      run: |
+        poetry update
+        poetry run pip install --upgrade setuptools
+
+    - name: Build and publish
+      env:
+        POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
+      run: |
+        echo "__version__ = '${{ env.tag }}\n'" >> ./unified_focal_loss/__init__.py
+        poetry version ${{ env.tag }}
+        poetry publish --build
