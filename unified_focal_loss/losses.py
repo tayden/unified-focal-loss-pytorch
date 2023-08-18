@@ -112,7 +112,7 @@ class _Loss(nn.Module, ABC):
             predictions).
         y_true : Tensor of shape (batch_size, ...)
             Ground truth labels.
-            
+
         Returns
         -------
         loss : Tensor of shape 1
@@ -708,7 +708,7 @@ class AsymmetricFocalLoss(_Loss):
 ###########################################
 #      Symmetric Unified Focal loss       #
 ###########################################
-class SymUnifiedFocalLoss(nn.Module):
+class SymmetricUnifiedFocalLoss(nn.Module):
     """The Unified Focal loss is a new compound loss function that unifies Dice-based
         and cross entropy-based loss functions into a single framework.
 
@@ -776,7 +776,7 @@ class SymUnifiedFocalLoss(nn.Module):
 ###########################################
 #      Asymmetric Unified Focal loss      #
 ###########################################
-class AsymUnifiedFocalLoss(nn.Module):
+class AsymmetricUnifiedFocalLoss(nn.Module):
     """The Unified Focal loss is a new compound loss function that unifies Dice-based
         and cross entropy-based loss functions into a single framework.
 

@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from einops import repeat
 
-import ufl as losses
+import unified_focal_loss as losses
 
 
 def _to_batch_one_hot(t, num_classes=2):
@@ -12,7 +12,6 @@ def _to_batch_one_hot(t, num_classes=2):
 
 TARGET_IMG = torch.LongTensor([[0, 0], [1, 1]])
 TARGET_IMG_W_IGNORE = torch.LongTensor([[0, 0], [1, 1], [2, 2]])
-TARGET_IMG_FOUR_CLS = torch.LongTensor([[0, 0], [1, 1]])
 
 
 def test_dice_loss():
@@ -39,7 +38,7 @@ def test_dice_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 0.267
 
     preds = _to_batch_one_hot([[0, 1], [1, 1]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 0.133
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 0.133
 
     loss = losses.DiceLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [1, 1], [1, 1]])
@@ -70,7 +69,7 @@ def test_dice_coefficient():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 0.733
 
     preds = _to_batch_one_hot([[0, 1], [1, 1]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 0.867
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 0.867
 
     loss = losses.DiceCoefficient(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [1, 1], [1, 1]])
@@ -91,7 +90,7 @@ def test_tversky_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 0.271
 
     preds = _to_batch_one_hot([[0, 0], [0, 1]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 0.136
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 0.136
 
     loss = losses.TverskyLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 0], [0, 1], [0, 1]])
@@ -115,7 +114,7 @@ def test_focal_tversky_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 0.826
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 0.413
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 0.413
 
     loss = losses.FocalTverskyLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
@@ -142,7 +141,7 @@ def test_combo_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 6.808
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 6.608
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 6.608
 
     preds = torch.Tensor(
         [
@@ -154,7 +153,7 @@ def test_combo_loss():
             ]
         ]
     )
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 0.559
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 0.559
 
     loss = losses.ComboLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
@@ -181,7 +180,7 @@ def test_focal_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 9.671
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 9.671
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 9.671
 
     loss = losses.FocalLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
@@ -205,7 +204,7 @@ def test_sym_focal_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 7.829
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 7.829
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 7.829
 
     loss = losses.SymmetricFocalLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
@@ -229,7 +228,7 @@ def test_sym_focal_tversky_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 0.75
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 0.375
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 0.375
 
     loss = losses.SymmetricFocalTverskyLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
@@ -253,7 +252,7 @@ def test_asym_focal_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 7.829
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 7.829
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 7.829
 
     loss = losses.AsymmetricFocalLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
@@ -277,7 +276,7 @@ def test_asym_focal_tversky_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 0.75
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 0.375
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 0.375
 
     loss = losses.AsymmetricFocalTverskyLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
@@ -285,7 +284,7 @@ def test_asym_focal_tversky_loss():
 
 
 def test_sym_unified_focal_loss():
-    loss = losses.SymUnifiedFocalLoss()
+    loss = losses.SymmetricUnifiedFocalLoss()
     assert round(float(loss(_to_batch_one_hot(TARGET_IMG, 2), TARGET_IMG)), 3) == 0.0
 
     preds = _to_batch_one_hot([[1, 1], [0, 0]])
@@ -301,15 +300,15 @@ def test_sym_unified_focal_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 4.289
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 4.102
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 4.102
 
-    loss = losses.SymUnifiedFocalLoss(ignore_index=2)
+    loss = losses.SymmetricUnifiedFocalLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
     assert round(float(loss(preds, TARGET_IMG_W_IGNORE)), 3) == 4.289
 
 
 def test_asym_unified_focal_loss():
-    loss = losses.AsymUnifiedFocalLoss()
+    loss = losses.AsymmetricUnifiedFocalLoss()
     assert round(float(loss(_to_batch_one_hot(TARGET_IMG, 2), TARGET_IMG)), 3) == 0.0
 
     preds = _to_batch_one_hot([[1, 1], [0, 0]])
@@ -325,8 +324,8 @@ def test_asym_unified_focal_loss():
     assert round(float(loss(preds, TARGET_IMG)), 3) == 4.289
 
     preds = _to_batch_one_hot([[0, 1], [0, 0]], num_classes=4)
-    assert round(float(loss(preds, TARGET_IMG_FOUR_CLS)), 3) == 4.102
+    assert round(float(loss(preds, TARGET_IMG)), 3) == 4.102
 
-    loss = losses.AsymUnifiedFocalLoss(ignore_index=2)
+    loss = losses.AsymmetricUnifiedFocalLoss(ignore_index=2)
     preds = _to_batch_one_hot([[0, 1], [0, 0], [0, 0]])
     assert round(float(loss(preds, TARGET_IMG_W_IGNORE)), 3) == 4.289
