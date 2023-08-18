@@ -10,42 +10,7 @@ from torch import nn
 EPSILON = 1e-8
 
 
-# noinspection DuplicatedCode
-def dice_similarity_c(
-    p: torch.Tensor, g: torch.Tensor, smooth: float = EPSILON, reduction="sum"
-) -> torch.Tensor:
-    """Compute the Dice similarity index for each class for predictions p and ground
-    truth labels g.
-
-    Parameters
-    ----------
-    p : np.ndarray shape=(batch_size, num_classes, height, width)
-        Softmax or sigmoid scaled predictions.
-    g : np.ndarray shape=(batch_size, height, width)
-        int type ground truth labels for each sample.
-    smooth : Optional[float]
-        A function smooth parameter that also provides numerical stability.
-    reduction: Optional[str]
-        The reduction method to apply to the output. Must be either 'sum' or 'none'.
-
-    Returns
-    -------
-    List[float]
-        The calculated similarity index amount for each class.
-    """
-    tp = p * g
-    denominator = p + g
-
-    if reduction == "sum":
-        tp = torch.nansum(torch.mul(p, g), dim=0)
-        denominator = torch.nansum(p + g, dim=0)
-    elif reduction != "none":
-        raise ValueError("Reduction must be either 'sum' or 'none'.")
-
-    return ((2 * tp) + smooth) / (denominator + smooth)
-
-
-def tversky_index_c(
+def _tversky_index_c(
     p: torch.Tensor,
     g: torch.Tensor,
     alpha: float = 0.5,
@@ -86,6 +51,33 @@ def tversky_index_c(
     elif reduction != "none":
         raise ValueError("Reduction must be either 'sum' or 'none'.")
     return (tp + smooth) / (tp + alpha * fn + beta * fp + smooth)
+
+
+def _dice_similarity_c(
+    p: torch.Tensor, g: torch.Tensor, smooth: float = EPSILON, reduction="sum"
+) -> torch.Tensor:
+    """Compute the Dice similarity index for each class for predictions p and ground
+    truth labels g.
+
+    Parameters
+    ----------
+    p : np.ndarray shape=(batch_size, num_classes, height, width)
+        Softmax or sigmoid scaled predictions.
+    g : np.ndarray shape=(batch_size, height, width)
+        int type ground truth labels for each sample.
+    smooth : Optional[float]
+        A function smooth parameter that also provides numerical stability.
+    reduction: Optional[str]
+        The reduction method to apply to the output. Must be either 'sum' or 'none'.
+
+    Returns
+    -------
+    List[float]
+        The calculated similarity index amount for each class.
+    """
+    return _tversky_index_c(
+        p, g, alpha=0.5, beta=0.5, smooth=smooth, reduction=reduction
+    )
 
 
 class _Loss(nn.Module, ABC):
